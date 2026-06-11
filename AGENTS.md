@@ -55,7 +55,7 @@ with `input_modalities=["text","image"]`.
 - Do not add a `CustomLLM` vendor — this recipe uses managed `OpenAI`.
 - Do not put `PORT` in `server/.env.example` (it would clobber the random port
   that `verify:local:fastapi` injects via `load_dotenv(override=True)`).
-- Do not write "livekit" anywhere in this repo.
+- Do not reference competing RTC platforms in this repo.
 
 ## Commands
 
