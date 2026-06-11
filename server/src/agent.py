@@ -1,11 +1,14 @@
 """
-Agent — Custom LLM Recipe
+Agent — Vision Recipe
 
-High-level API for managing Agora Conversational AI Agents with a Custom LLM.
+High-level API for managing Agora Conversational AI Agents that can see the
+user's camera. The pipeline is:
 
-Instead of using the built-in OpenAI vendor, this recipe configures the agent
-to use a custom LLM endpoint (your own proxy server) that is compatible with
-the OpenAI Chat Completions API format.
+  DeepgramSTT → OpenAI gpt-4o (input_modalities=["text","image"]) → MiniMaxTTS
+
+Agora captures the user's published camera track and forwards frames as image
+content to the LLM. OpenAI is Agora-managed (keyless by default). OPENAI_API_KEY
+is optional — set it only if your account requires a BYO key.
 """
 import logging
 import os
@@ -14,64 +17,35 @@ from typing import Any, Dict, Optional
 
 from agora_agent import Area, AsyncAgora
 from agora_agent.agentkit import Agent as AgoraAgent
-from agora_agent.agentkit.vendors import CustomLLM, DeepgramSTT, MiniMaxTTS
+from agora_agent.agentkit.vendors import OpenAI, DeepgramSTT, MiniMaxTTS
+from vision_config import INPUT_MODALITIES, build_vision_system_messages
 
 logger = logging.getLogger("uvicorn.error")
 
-CUSTOM_LLM_PROMPT = """You are a helpful AI assistant powered by a custom LLM integration \
-with Agora's Conversational AI Engine.
-
-You can answer questions, have conversations, and help users with various tasks. \
-Keep most replies to one or two sentences unless the user explicitly asks for more detail.
-"""
+AGENT_GREETING = "Hi! Turn on your camera and ask me what I see."
 
 
 class Agent:
     """
-    High-level wrapper for Agora Conversational AI Agent with Custom LLM.
+    High-level wrapper for Agora Conversational AI Agent with vision support.
 
-    The key difference from the quickstart is that this uses the OpenAI vendor
-    with a custom `base_url` pointing to your own OpenAI-compatible endpoint
-    (the custom_llm_server.py proxy). The Agora cloud will call your proxy
-    for chat completions instead of calling OpenAI directly.
-
-    IMPORTANT: The custom LLM URL must be publicly accessible for the Agora
-    Conversational AI Engine (cloud) to reach it. For local development, use
-    a tunnel (ngrok, Cloudflare Tunnel) or GitHub Codespaces with public ports.
+    Uses the managed OpenAI vendor (Agora-managed, keyless) with gpt-4o and
+    input_modalities=["text","image"]. Agora captures the user's published
+    camera track and forwards frames as image content to the LLM — no extra
+    configuration required beyond the standard Agora credentials.
     """
 
     def __init__(self):
         self.app_id = os.getenv("AGORA_APP_ID")
         self.app_certificate = os.getenv("AGORA_APP_CERTIFICATE")
-        self.greeting = os.getenv(
-            "AGENT_GREETING",
-            "Hi there! I'm your AI assistant powered by a custom LLM. How can I help?",
-        )
+        self.greeting = os.getenv("AGENT_GREETING", AGENT_GREETING)
 
-        # Custom LLM configuration.
-        # CUSTOM_LLM_URL is the FULL OpenAI-compatible chat-completions URL and must be
-        # PUBLICLY reachable: Agora cloud (not this backend) calls it. For local dev,
-        # expose the llm/ server on port 8001 via ngrok and paste that URL here.
-        # There is intentionally no localhost default: a localhost URL would let the
-        # agent "start" while its LLM calls silently fail cloud-side.
-        self.custom_llm_url = os.getenv("CUSTOM_LLM_URL")
-        self.custom_llm_api_key = os.getenv("CUSTOM_LLM_API_KEY", "any-key-here")
-        self.custom_llm_model = os.getenv("CUSTOM_LLM_MODEL", "mock-model")
+        # OpenAI is Agora-managed (keyless). OPENAI_API_KEY optional. gpt-4o is vision-capable.
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o")
 
         if not self.app_id or not self.app_certificate:
             raise ValueError("AGORA_APP_ID and AGORA_APP_CERTIFICATE are required")
-
-        if not self.custom_llm_url:
-            raise ValueError(
-                "CUSTOM_LLM_URL is required (the public chat-completions URL of your "
-                "custom LLM endpoint, e.g. https://<tunnel>/chat/completions)"
-            )
-
-        if not self.custom_llm_api_key:
-            # CustomLLM rejects a missing api_key, and base_url is only valid with a key.
-            raise ValueError(
-                "CUSTOM_LLM_API_KEY is required when using a custom LLM endpoint"
-            )
 
         self.client = AsyncAgora(
             area=Area.US,
@@ -89,7 +63,7 @@ class Agent:
         user_uid: int,
         output_audio_codec: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Start agent with Custom LLM vendor chain."""
+        """Start vision agent."""
         if not channel_name or not str(channel_name).strip():
             raise ValueError("channel_name is required and cannot be empty")
         if agent_uid <= 0:
@@ -99,32 +73,14 @@ class Agent:
 
         name = f"agent_{channel_name}_{agent_uid}_{int(time.time())}"
 
-        # ============================================================
-        # KEY DIFFERENCE: Use the SDK's CustomLLM vendor
-        # ============================================================
-        # The base quickstart uses a managed `OpenAI(model="gpt-4o-mini")`.
-        # This recipe instead points the LLM stage at our own OpenAI-compatible
-        # endpoint (the llm/ server) via the purpose-built `CustomLLM` vendor.
-        # CustomLLM stamps `vendor: "custom"` in the wire config and requires
-        # both base_url and api_key. Your endpoint can then:
-        # - Add custom preprocessing (RAG, context injection)
-        # - Route to different models dynamically
-        # - Add logging and analytics
-        # - Implement custom tool calling
-        # ============================================================
-        llm = CustomLLM(
-            base_url=self.custom_llm_url,
-            api_key=self.custom_llm_api_key,
-            model=self.custom_llm_model,
+        llm = OpenAI(
+            api_key=self.openai_api_key,
+            model=self.openai_model,
+            input_modalities=INPUT_MODALITIES,
+            system_messages=build_vision_system_messages(),
             greeting_message=self.greeting,
-            failure_message="Please wait a moment.",
-            max_history=15,
-            max_tokens=1024,
-            temperature=0.7,
-            top_p=0.95,
         )
 
-        # STT and TTS remain the same as the quickstart
         stt = DeepgramSTT(model="nova-3", language="en")
         tts = MiniMaxTTS(model="speech_2_6_turbo", voice_id="English_captivating_female1")
 
@@ -138,7 +94,6 @@ class Agent:
 
         agora_agent = AgoraAgent(
             name=name,
-            instructions=CUSTOM_LLM_PROMPT,
             greeting=self.greeting,
             failure_message="Please wait a moment.",
             max_history=50,
@@ -160,7 +115,7 @@ class Agent:
                     },
                 },
             },
-            advanced_features={"enable_rtm": True, "enable_tools": True},
+            advanced_features={"enable_rtm": True},
             parameters=parameters,
         )
 
@@ -182,18 +137,18 @@ class Agent:
         )
 
         logger.info(
-            "Starting Custom LLM agent channel=%s agent_uid=%s user_uid=%s llm_url=%s",
+            "Starting vision agent channel=%s agent_uid=%s user_uid=%s model=%s",
             channel_name,
             agent_uid,
             user_uid,
-            self.custom_llm_url,
+            self.openai_model,
         )
 
         try:
             agent_id = await session.start()
         except Exception:
             logger.exception(
-                "Failed to start Custom LLM agent channel=%s agent_uid=%s user_uid=%s",
+                "Failed to start vision agent channel=%s agent_uid=%s user_uid=%s",
                 channel_name,
                 agent_uid,
                 user_uid,
@@ -204,7 +159,7 @@ class Agent:
         self._sessions[agent_id] = session
 
         logger.info(
-            "Started Custom LLM agent agent_id=%s channel=%s",
+            "Started vision agent agent_id=%s channel=%s",
             agent_id,
             channel_name,
         )
