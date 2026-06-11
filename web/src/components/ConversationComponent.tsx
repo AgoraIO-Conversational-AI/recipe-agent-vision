@@ -158,6 +158,15 @@ export default function ConversationComponent({
 	const { localMicrophoneTrack } = useLocalMicrophoneTrack(isReady);
 	const { localCameraTrack } = useLocalCameraTrack(isReady);
 
+	// Ensure the camera track is released (light off) if the component unmounts
+	// without going through handleEndConversation (navigation, reload, error).
+	useEffect(() => {
+		return () => {
+			localCameraTrack?.stop();
+			localCameraTrack?.close();
+		};
+	}, [localCameraTrack]);
+
 	useEffect(() => {
 		if (!client) return;
 		try {
