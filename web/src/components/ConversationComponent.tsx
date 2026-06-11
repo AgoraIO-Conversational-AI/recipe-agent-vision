@@ -36,10 +36,12 @@ import {
 import { AgentVisualizer } from "agora-agent-uikit";
 import { MicButtonWithVisualizer } from "agora-agent-uikit/rtc";
 import {
+	LocalVideoTrack,
 	RemoteUser,
 	type UID,
 	useClientEvent,
 	useJoin,
+	useLocalCameraTrack,
 	useLocalMicrophoneTrack,
 	usePublish,
 	useRTCClient,
@@ -154,6 +156,7 @@ export default function ConversationComponent({
 	);
 
 	const { localMicrophoneTrack } = useLocalMicrophoneTrack(isReady);
+	const { localCameraTrack } = useLocalCameraTrack(isReady);
 
 	useEffect(() => {
 		if (!client) return;
@@ -334,7 +337,7 @@ export default function ConversationComponent({
 		return getCurrentInProgressMessage(transcript);
 	}, [transcript]);
 
-	usePublish([localMicrophoneTrack]);
+	usePublish([localMicrophoneTrack, localCameraTrack]);
 
 	useClientEvent(client, "user-joined", (user) => {
 		if (user.uid.toString() === agentUID) setIsAgentConnected(true);
@@ -431,8 +434,23 @@ export default function ConversationComponent({
 			}
 		}
 
+		if (localCameraTrack) {
+			try {
+				await client?.unpublish(localCameraTrack);
+			} catch (error) {
+				console.warn("Failed to unpublish camera track:", error);
+			}
+
+			try {
+				localCameraTrack.stop();
+				localCameraTrack.close();
+			} catch (error) {
+				console.warn("Failed to release camera track:", error);
+			}
+		}
+
 		onEndConversation();
-	}, [client, localMicrophoneTrack, onEndConversation]);
+	}, [client, localMicrophoneTrack, localCameraTrack, onEndConversation]);
 
 	return (
 		<QuickstartConversationLayout
@@ -459,6 +477,11 @@ export default function ConversationComponent({
 					aria-label="AI agent status visualization"
 				>
 					<AgentVisualizer state={visualizerState} size="lg" />
+					{localCameraTrack && (
+						<div style={{ width: 240, height: 180, borderRadius: 8, overflow: "hidden" }}>
+							<LocalVideoTrack track={localCameraTrack} play style={{ width: "100%", height: "100%" }} />
+						</div>
+					)}
 					{remoteUsers.map((user) => (
 						<div key={user.uid} className="hidden">
 							<RemoteUser user={user} />
