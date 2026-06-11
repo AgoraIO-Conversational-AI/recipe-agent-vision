@@ -1,28 +1,21 @@
 # Agora Conversational AI — Vision Recipe (Python)
 
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![python>=3.10](https://img.shields.io/badge/python-%3E%3D3.10-blue)](https://www.python.org/)
+[![bun](https://img.shields.io/badge/bun-%E2%89%A51.0-black)](https://bun.sh/)
+
 A voice agent that **sees your camera**. The user publishes their camera via
 the web UI and the agent answers the question "what do you see?" by describing
 the most recent frame — no extra configuration beyond standard Agora credentials.
 
-## How it works
-
-Agora's Conversational AI Engine captures the user's published camera track and
-forwards frames as image content to the LLM. The agent is powered by
-**managed `gpt-4o`** (zero-key: Agora manages the OpenAI key) with
-`input_modalities=["text","image"]`. STT (Deepgram) and TTS (MiniMax) are also
-Agora-managed.
-
-This is a **zero-key** recipe: `OPENAI_API_KEY` is optional. Only your Agora
-App ID and App Certificate are required.
-
 ## Prerequisites
 
-- [Python 3.8+](https://www.python.org/)
+- [Python 3.10+](https://www.python.org/)
 - [Bun](https://bun.sh/)
 - Agora App ID + App Certificate (the [Agora CLI](https://github.com/AgoraIO/cli) makes this easy)
-- A browser with camera access (allow when prompted)
+- A browser that grants camera access (allow when prompted)
 
-## Run it
+## Run It
 
 ```bash
 # 1. Install web deps + create the Python venv
@@ -40,39 +33,22 @@ bun run dev
 Open [http://localhost:3000](http://localhost:3000) → **Start Conversation** →
 allow camera access → ask "what do you see?"
 
-## Architecture
+### Working from a clone
 
-```
-Browser (localhost:3000)
-  │  publishes mic + camera via agora-rtc-react
-  │  fetch /api/*
-  ▼
-Next.js  ──rewrite──▶  Agent backend  (server/, localhost:8000)
-                          │  starts agent session (OpenAI vendor, gpt-4o)
-                          ▼
-                       Agora ConvoAI Cloud
-                          │  user speech → Deepgram STT (managed)
-                          │  camera frames → gpt-4o input_modalities=["text","image"]
-                          │  response text → MiniMax TTS (managed)
-                          ▼
-                       Agent speaks back over RTC
-```
+| Service | URL |
+| --- | --- |
+| Web frontend | http://localhost:3000 |
+| Agent backend | http://localhost:8000 |
+| Backend API docs | http://localhost:8000/docs |
 
-The browser calls Next `/api/*`, which rewrites to the agent backend. The agent
-backend owns Agora tokens and session lifecycle. No separate LLM service is
-needed — Agora manages the OpenAI connection. See [ARCHITECTURE.md](./ARCHITECTURE.md).
+## Deploy
 
-## Project structure
+Deploy `web` (Next.js) and `server` (FastAPI). Set `AGENT_BACKEND_URL` in the
+web deployment to point at the backend.
 
-```
-recipe-agent-vision/
-├── server/   # Agent backend (:8000) — tokens + agent lifecycle, vision config
-│   ├── src/{server.py, agent.py, vision_config.py}
-│   └── tests/test_vision_config.py
-├── web/      # Next.js frontend (:3000) — publishes mic + camera
-│   └── src/components/ConversationComponent.tsx  (useLocalCameraTrack)
-└── package.json
-```
+Docker image (published on `v*` tags): `ghcr.io/AgoraIO-Conversational-AI/recipe-agent-vision`
+
+The Docker image is **BACKEND-ONLY** (:8000). Deploy `web` separately (e.g. Vercel).
 
 ## Environment variables
 
@@ -102,6 +78,62 @@ bun run verify:local     # full local gate: backend compile + smoke tests + web 
 bun run clean            # remove venv and build artifacts
 ```
 
+Tests run standalone (no Agora cloud needed): `pytest` in `server/`, plus
+`bun run verify` in `web/`. CI runs them on Linux/macOS/Windows × Python 3.10 & 3.13.
+
+## Architecture
+
+```
+Browser (localhost:3000)
+  │  publishes mic + camera via agora-rtc-react
+  │  fetch /api/*
+  ▼
+Next.js  ──rewrite──▶  Agent backend  (server/, localhost:8000)
+                          │  starts agent session (OpenAI vendor, gpt-4o)
+                          ▼
+                       Agora ConvoAI Cloud
+                          │  user speech → Deepgram STT (managed)
+                          │  camera frames → gpt-4o input_modalities=["text","image"]
+                          │  response text → MiniMax TTS (managed)
+                          ▼
+                       Agent speaks back over RTC
+```
+
+The browser calls Next `/api/*`, which rewrites to the agent backend. The agent
+backend owns Agora tokens and session lifecycle. No separate LLM service is
+needed — Agora manages the OpenAI connection. See [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+## What You Get
+
+- **Web client** that publishes both mic and camera using `agora-rtc-react`
+- **Agent backend** (FastAPI :8000) handling Agora tokens and session lifecycle
+- **API contract** at `/get_config`, `/startAgent`, `/stopAgent`
+- **Managed keyless `gpt-4o`** with `input_modalities:["text","image"]` — Agora
+  forwards the user's published camera frames to the LLM; no OpenAI key required
+- **Zero-key** — only Agora App ID and App Certificate are required
+
+## How It Works
+
+1. The browser publishes both mic audio and the camera track into an Agora RTC channel.
+2. The web UI calls `/api/get_config` (rewritten to the agent backend) to obtain channel credentials.
+3. The backend calls Agora's Conversational AI API to start an agent session using the managed `OpenAI` vendor with `input_modalities=["text","image"]`.
+4. Agora's cloud engine receives the user's audio stream and transcribes it with managed Deepgram STT.
+5. Agora also captures the user's **published camera track** and forwards frames as `image_url` content to `gpt-4o`.
+6. `gpt-4o` reasons over both voice intent and the camera image, and Agora synthesises the reply with managed MiniMax TTS.
+7. The spoken reply is delivered back over RTC.
+
+On the web side, `useLocalCameraTrack` obtains the camera stream and `usePublish([mic, camera])` sends both tracks into the channel. A small local preview shows the user what the agent sees.
+
+## Repo Map
+
+```
+recipe-agent-vision/
+├── web/      # Next.js frontend (:3000) — publishes mic + camera
+├── server/   # Agent backend (:8000) — tokens, session lifecycle, vision config
+├── ARCHITECTURE.md
+└── AGENTS.md
+```
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -110,6 +142,11 @@ bun run clean            # remove venv and build artifacts
 | Agent does not describe the camera | Confirm the model is vision-capable (`gpt-4o` default) and camera track published |
 | `AGORA_APP_ID` or `AGORA_APP_CERTIFICATE` missing | Run `agora project env write server/.env.local` or fill `server/.env.local` manually |
 
+## More Docs
+
+- [ARCHITECTURE.md](./ARCHITECTURE.md)
+- [AGENTS.md](./AGENTS.md)
+
 ## License
 
-MIT
+Released under the [MIT License](./LICENSE).
