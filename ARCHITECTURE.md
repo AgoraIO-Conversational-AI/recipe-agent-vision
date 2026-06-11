@@ -1,8 +1,8 @@
-# Architecture — Custom LLM Recipe
+# Architecture — Vision Recipe
 
-Three processes. The browser talks only to Next.js `/api/*`, which rewrites to the
-agent backend. The agent backend owns Agora tokens and agent lifecycle. The custom
-LLM endpoint is a separate service that **Agora cloud** calls directly.
+Two processes: the agent backend and the Next.js frontend. The browser
+publishes both mic and camera; the web tier proxies API calls to the backend.
+No separate LLM service is required — Agora manages the OpenAI connection.
 
 ## Request flow
 
@@ -10,37 +10,31 @@ LLM endpoint is a separate service that **Agora cloud** calls directly.
 Browser
   │  GET /api/get_config            → token + channel/UIDs
   │  POST /api/startAgent           → start agent session
+  │  publishes mic + camera via RTC
   ▼
 Next.js  (rewrites /api/* → AGENT_BACKEND_URL)
   ▼
 Agent backend (server/, :8000)
-  │  builds session with CustomLLM(base_url=CUSTOM_LLM_URL)
+  │  builds session with OpenAI(model="gpt-4o", input_modalities=["text","image"])
   ▼
 Agora ConvoAI Cloud
   │  user speech → Deepgram STT (managed)
-  │  POST <CUSTOM_LLM_URL>/chat/completions   (Authorization: Bearer <key>)
+  │  camera frames captured from user's published video track
+  │  frames forwarded as image content to gpt-4o
+  │  response text → MiniMax TTS (managed)
   ▼
-Custom LLM endpoint (llm/, :8001, public via tunnel)
-  │  returns OpenAI SSE
-  ▼
-Agora ConvoAI Cloud → MiniMax TTS (managed) → user hears speech
-                     → RTM transcript / metrics → web UI
+Agent audio + RTM transcript/metrics → browser
 ```
 
 `POST /api/stopAgent { agentId }` ends the session.
 
-## Why two backends
+## Camera forwarding (confirmed)
 
-`server/` and `llm/` are split because of an **exposure asymmetry**:
-
-- `llm/` must be reachable by **Agora cloud over the public internet** (hence the
-  ngrok tunnel). It is the part you replace with your own model, and it has no
-  Agora dependency.
-- `server/` only needs to be reachable by your web tier. It holds the Agora App
-  Certificate and all token logic.
-
-In production the two could be co-deployed, but they are kept separate here to
-make that boundary — and the public-exposure requirement — explicit.
+Agora's Conversational AI Engine captures frames from the user's **published
+video track** (the `localCameraTrack` published via `usePublish` in
+`ConversationComponent.tsx`). These frames are forwarded to the LLM as image
+content. The `input_modalities=["text","image"]` parameter on the `OpenAI`
+vendor enables this path.
 
 ## API (agent backend, port 8000)
 
@@ -57,5 +51,13 @@ The browser calls these as `/api/*`; Next rewrites them to `AGENT_BACKEND_URL`.
 - Browser → agent backend: none (local dev).
 - Agent backend → Agora cloud: Token007, generated from `AGORA_APP_ID` +
   `AGORA_APP_CERTIFICATE`.
-- Agora cloud → custom LLM endpoint: `Authorization: Bearer <CUSTOM_LLM_API_KEY>`.
-  The mock endpoint does not validate it; a production endpoint should.
+- Agent backend → OpenAI (via Agora cloud): Agora-managed; `OPENAI_API_KEY`
+  is optional (zero-key setup).
+
+## Key source files
+
+| File | Purpose |
+| --- | --- |
+| `server/src/agent.py` | Builds the `OpenAI` vendor with `input_modalities=["text","image"]` |
+| `server/src/vision_config.py` | Pure config: `INPUT_MODALITIES` and system messages |
+| `web/src/components/ConversationComponent.tsx` | Adds `useLocalCameraTrack` + `usePublish([mic, camera])` |
