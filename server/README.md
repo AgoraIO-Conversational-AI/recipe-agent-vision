@@ -7,7 +7,7 @@ Next.js `/api/*` rewrite proxy (port 8000).
 ## What makes this the vision recipe
 
 The agent uses the SDK's `OpenAI` vendor with `input_modalities=["text","image"]`
-and `model="gpt-4o"`. Agora captures the user's published camera track and
+and `model="gpt-4o-mini"`. Agora captures the user's published camera track and
 forwards frames as image content to the LLM. No custom endpoint or tunnel is
 required — OpenAI is Agora-managed (zero-key by default).
 
@@ -43,7 +43,7 @@ python -m pytest tests/ -q
 | --- | :---: | :---: | --- |
 | `AGORA_APP_ID` | yes | — | Agora Console → Project → App ID |
 | `AGORA_APP_CERTIFICATE` | yes | — | Agora Console → Project → App Certificate |
-| `OPENAI_MODEL` | | `gpt-4o` | Must be vision-capable |
+| `OPENAI_MODEL` | | `gpt-4o-mini` | Must be vision-capable and Agora-managed (keyless) |
 | `OPENAI_API_KEY` | | — | Optional — Agora manages the OpenAI key (keyless) |
 | `AGENT_GREETING` | | built-in | Optional opening line override |
 | `PORT` | | `8000` | Agent backend port |
