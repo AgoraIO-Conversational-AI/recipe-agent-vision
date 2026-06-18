@@ -4,7 +4,7 @@ Agent — Vision Recipe
 High-level API for managing Agora Conversational AI Agents that can see the
 user's camera. The pipeline is:
 
-  DeepgramSTT → OpenAI gpt-4o (input_modalities=["text","image"]) → MiniMaxTTS
+  DeepgramSTT → OpenAI gpt-4o-mini (input_modalities=["text","image"]) → MiniMaxTTS
 
 Agora captures the user's published camera track and forwards frames as image
 content to the LLM. OpenAI is Agora-managed (keyless by default). OPENAI_API_KEY
@@ -12,7 +12,6 @@ is optional — set it only if your account requires a BYO key.
 """
 import logging
 import os
-import time
 from typing import Any, Dict, Optional
 
 from agora_agent import Area, AsyncAgora
@@ -29,7 +28,7 @@ class Agent:
     """
     High-level wrapper for Agora Conversational AI Agent with vision support.
 
-    Uses the managed OpenAI vendor (Agora-managed, keyless) with gpt-4o and
+    Uses the managed OpenAI vendor (Agora-managed, keyless) with gpt-4o-mini and
     input_modalities=["text","image"]. Agora captures the user's published
     camera track and forwards frames as image content to the LLM — no extra
     configuration required beyond the standard Agora credentials.
@@ -40,9 +39,9 @@ class Agent:
         self.app_certificate = os.getenv("AGORA_APP_CERTIFICATE")
         self.greeting = os.getenv("AGENT_GREETING", AGENT_GREETING)
 
-        # OpenAI is Agora-managed (keyless). OPENAI_API_KEY optional. gpt-4o is vision-capable.
+        # OpenAI is Agora-managed (keyless). OPENAI_API_KEY optional. gpt-4o-mini is vision-capable and keyless.
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o")
+        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
         if not self.app_id or not self.app_certificate:
             raise ValueError("AGORA_APP_ID and AGORA_APP_CERTIFICATE are required")
@@ -71,8 +70,6 @@ class Agent:
         if user_uid <= 0:
             raise ValueError("user_uid is required and cannot be empty")
 
-        name = f"agent_{channel_name}_{agent_uid}_{int(time.time())}"
-
         llm = OpenAI(
             api_key=self.openai_api_key,
             model=self.openai_model,
@@ -94,7 +91,7 @@ class Agent:
             parameters["output_audio_codec"] = output_audio_codec.strip()
 
         agora_agent = AgoraAgent(
-            name=name,
+            client=self.client,
             greeting=self.greeting,
             failure_message="Please wait a moment.",
             max_history=50,
@@ -128,7 +125,6 @@ class Agent:
         )
 
         session = agora_agent.create_async_session(
-            client=self.client,
             channel=channel_name,
             agent_uid=str(agent_uid),
             remote_uids=[str(user_uid)],

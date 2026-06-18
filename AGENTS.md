@@ -2,7 +2,7 @@
 
 For coding agents working in `recipe-agent-vision`. This repository is the
 **vision** recipe (`Recipe Role: vision`) in the Agora Conversational AI
-recipes family. A voice agent that sees the user's camera via managed `gpt-4o`
+recipes family. A voice agent that sees the user's camera via managed `gpt-4o-mini`
 with `input_modalities=["text","image"]`.
 
 ## System shape
@@ -10,7 +10,7 @@ with `input_modalities=["text","image"]`.
 - **`server/`** — Python FastAPI agent backend (:8000). Owns Agora token
   generation and agent session lifecycle. Uses the `OpenAI` vendor with
   `input_modalities=["text","image"]` and `vision_config.py` for system
-  messages. SDK: `agora-agents>=2.0.0` (`import agora_agent`).
+  messages. SDK: `agora-agents>=2.3.0` (`import agora_agent`).
 - **`web/`** — Next.js 16 / React 19 / TypeScript frontend (:3000). Publishes
   both mic and camera via `agora-rtc-react` (`useLocalCameraTrack`,
   `usePublish([mic, camera])`). Shows a small local camera preview.
@@ -39,7 +39,7 @@ with `input_modalities=["text","image"]`.
   passed to `OpenAI(input_modalities=...)` in `agent.py`.
 - Agora captures the user's **published camera track** and forwards frames as
   image content to the LLM. This is confirmed behavior.
-- The model must be vision-capable. Default is `gpt-4o` (env: `OPENAI_MODEL`).
+- The model must be vision-capable and Agora-managed (keyless). Default is `gpt-4o-mini` (env: `OPENAI_MODEL`).
 - `OPENAI_API_KEY` is optional — Agora manages the OpenAI key (zero-key).
 
 ## Patterns

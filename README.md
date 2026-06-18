@@ -58,7 +58,7 @@ Backend env file: [`server/.env.example`](server/.env.example).
 | --- | :---: | :---: | --- |
 | `AGORA_APP_ID` | yes | — | Agora Console → Project → App ID |
 | `AGORA_APP_CERTIFICATE` | yes | — | Agora Console → Project → App Certificate |
-| `OPENAI_MODEL` | | `gpt-4o` | Must be a vision-capable model |
+| `OPENAI_MODEL` | | `gpt-4o-mini` | Must be vision-capable and Agora-managed (keyless) |
 | `OPENAI_API_KEY` | | — | Optional — Agora manages the OpenAI key (keyless) |
 | `AGENT_GREETING` | | built-in | Optional opening line override |
 | `PORT` | | `8000` | Agent backend port |
@@ -89,11 +89,11 @@ Browser (localhost:3000)
   │  fetch /api/*
   ▼
 Next.js  ──rewrite──▶  Agent backend  (server/, localhost:8000)
-                          │  starts agent session (OpenAI vendor, gpt-4o)
+                          │  starts agent session (OpenAI vendor, gpt-4o-mini)
                           ▼
                        Agora ConvoAI Cloud
                           │  user speech → Deepgram STT (managed)
-                          │  camera frames → gpt-4o input_modalities=["text","image"]
+                          │  camera frames → gpt-4o-mini input_modalities=["text","image"]
                           │  response text → MiniMax TTS (managed)
                           ▼
                        Agent speaks back over RTC
@@ -108,7 +108,7 @@ needed — Agora manages the OpenAI connection. See [ARCHITECTURE.md](./ARCHITEC
 - **Web client** that publishes both mic and camera using `agora-rtc-react`
 - **Agent backend** (FastAPI :8000) handling Agora tokens and session lifecycle
 - **API contract** at `/get_config`, `/startAgent`, `/stopAgent`
-- **Managed keyless `gpt-4o`** with `input_modalities:["text","image"]` — Agora
+- **Managed keyless `gpt-4o-mini`** with `input_modalities:["text","image"]` — Agora
   forwards the user's published camera frames to the LLM; no OpenAI key required
 - **Zero-key** — only Agora App ID and App Certificate are required
 
@@ -118,8 +118,8 @@ needed — Agora manages the OpenAI connection. See [ARCHITECTURE.md](./ARCHITEC
 2. The web UI calls `/api/get_config` (rewritten to the agent backend) to obtain channel credentials.
 3. The backend calls Agora's Conversational AI API to start an agent session using the managed `OpenAI` vendor with `input_modalities=["text","image"]`.
 4. Agora's cloud engine receives the user's audio stream and transcribes it with managed Deepgram STT.
-5. Agora also captures the user's **published camera track** and forwards frames as `image_url` content to `gpt-4o`.
-6. `gpt-4o` reasons over both voice intent and the camera image, and Agora synthesises the reply with managed MiniMax TTS.
+5. Agora also captures the user's **published camera track** and forwards frames as `image_url` content to `gpt-4o-mini`.
+6. `gpt-4o-mini` reasons over both voice intent and the camera image, and Agora synthesises the reply with managed MiniMax TTS.
 7. The spoken reply is delivered back over RTC.
 
 On the web side, `useLocalCameraTrack` obtains the camera stream and `usePublish([mic, camera])` sends both tracks into the channel. A small local preview shows the user what the agent sees.
@@ -139,7 +139,7 @@ recipe-agent-vision/
 | Problem | Fix |
 | --- | --- |
 | No camera preview appears | Allow camera access in the browser when prompted |
-| Agent does not describe the camera | Confirm the model is vision-capable (`gpt-4o` default) and camera track published |
+| Agent does not describe the camera | Confirm the model is vision-capable (`gpt-4o-mini` default) and camera track published |
 | `AGORA_APP_ID` or `AGORA_APP_CERTIFICATE` missing | Run `agora project env write server/.env.local` or fill `server/.env.local` manually |
 
 ## More Docs
