@@ -15,12 +15,12 @@ Browser
 Next.js  (rewrites /api/* → AGENT_BACKEND_URL)
   ▼
 Agent backend (server/, :8000)
-  │  builds session with OpenAI(model="gpt-4o", input_modalities=["text","image"])
+  │  builds session with OpenAI(model="gpt-4o-mini", input_modalities=["text","image"])
   ▼
 Agora ConvoAI Cloud
   │  user speech → Deepgram STT (managed)
   │  camera frames captured from user's published video track
-  │  frames forwarded as image content to gpt-4o
+  │  frames forwarded as image content to gpt-4o-mini
   │  response text → MiniMax TTS (managed)
   ▼
 Agent audio + RTM transcript/metrics → browser
