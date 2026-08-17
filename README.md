@@ -15,6 +15,10 @@ the most recent frame — no extra configuration beyond standard Agora credentia
 - Agora App ID + App Certificate (the [Agora CLI](https://github.com/AgoraIO/cli) makes this easy)
 - A browser that grants camera access (allow when prompted)
 
+The same commands work on macOS, Linux, and Windows. On macOS/Linux, setup uses
+`python3`; on Windows, it uses the Python launcher (`py`) or `python`. WSL and
+virtualenv activation are not required.
+
 ## Run It
 
 ```bash
